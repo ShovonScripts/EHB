@@ -54,6 +54,13 @@ class MediaForm
                     ->rows(2)
                     ->columnSpanFull(),
 
+                // Read-only, and deliberately *not* dehydrated: `disabled()` in
+                // Filament 5 implies `saved(false)`, so this field never writes
+                // the column (which is what keeps the uploader out of the
+                // client's reach). `media.uploaded_by` is NOT NULL, so
+                // CreateMedia stamps it from the authenticated user instead —
+                // see the note there. On edit the stored value is simply left
+                // alone, so re-saving a row cannot reassign its uploader.
                 Select::make('uploaded_by')
                     ->relationship('uploader', 'name')
                     ->default(auth()->id())

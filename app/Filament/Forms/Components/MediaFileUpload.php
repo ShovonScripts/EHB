@@ -55,9 +55,17 @@ class MediaFileUpload extends SecureFileUpload
 
                 // State was hydrated from (or already is) a media id.
                 if (is_numeric($state)) {
-                    // If alt_text field is configured and has a value, update the Media record
+                    // If alt_text field is configured and has a value, update the Media record.
+                    //
+                    // Saved through the model, not
+                    // `Media::where('id', …)->update(…)`: a mass update bypasses
+                    // Eloquent events, and Media's events are what invalidate the
+                    // public page cache and write the audit trail. Done as a
+                    // query-builder update, an alt-text edit was invisible to
+                    // both — the cached HTML kept the old description for the
+                    // whole TTL, and SECURITY.md §15 audit missed the change.
                     if ($this->altTextField && $altText = $get($this->altTextField)) {
-                        Media::where('id', (int) $state)->update(['alt_text' => $altText]);
+                        Media::find((int) $state)?->update(['alt_text' => $altText]);
                     }
 
                     return (int) $state;

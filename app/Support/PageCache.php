@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\ContentItem;
 use App\Models\Education;
 use App\Models\JournalistProfile;
+use App\Models\Media;
 use App\Models\Page;
 use App\Models\Publication;
 use App\Models\Setting;
@@ -246,7 +247,18 @@ class PageCache
             && ! $request->is('archive', 'search');
     }
 
-    /** Models whose changes should invalidate the public page cache. */
+    /**
+     * Models whose changes should invalidate the public page cache.
+     *
+     * Media is on the list because a media row *is* public markup: its URL,
+     * alt text and caption are rendered into pages, and the whole response is
+     * cached for the TTL. Without it, editing a row's alt text, replacing the
+     * file behind a featured image, or deleting an image left the cached HTML
+     * pointing at the old description — or at a file that no longer exists, so
+     * the page served a broken image until the TTL expired. Note that a Media
+     * change also has to drop SiteSettings (the share image falls back to the
+     * portrait), which RecordsActivity already does for anything on this list.
+     */
     public static function shouldInvalidate(Model $model): bool
     {
         return in_array($model->getMorphClass(), [
@@ -255,6 +267,7 @@ class PageCache
             Tag::class,
             Topic::class,
             Publication::class,
+            Media::class,
             JournalistProfile::class,
             CareerHistory::class,
             Education::class,

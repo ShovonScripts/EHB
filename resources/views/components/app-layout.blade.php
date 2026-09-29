@@ -39,14 +39,22 @@
     // are the exception: Open Graph and Twitter images are fetched by crawlers
     // that resolve them against nothing, so they must be absolute. Absolutise
     // here, once, rather than at each call site.
-    // Alt text and dimensions always describe the image actually emitted.
-    // The page's own values win when the page supplies the image; the
-    // default image's own values apply when it is the fallback. Mixing them
-    // — the default's alt on the page's image — was a real defect: every
-    // share card on the site carried one generic alt text (ShareCardTest).
-    if ($ogImage) {
-        $ogImageUrl = $ogImage;
-        $ogImageAltText = $ogImageAlt ?? $metaTitle;
+    // og:image:alt and og:image:width/height describe *the image that was
+    // actually emitted*, so they are resolved alongside it rather than
+    // independently. The page's own values win when the page supplies the
+    // image; the default image's own values apply when it is the fallback.
+    // Mixing them — the default's alt on the page's image — was a real defect:
+    // every share card on the site carried one generic alt text (ShareCardTest).
+    $pageImage = $ogImage ?: null;
+    // `filled(...) ? ... : null`, not `??`: a call site that passes an empty
+    // string (a Media row with no alt text) must fall through to the title
+    // rather than emitting `content=""`, which is an alt attribute that
+    // describes nothing.
+    $pageImageAlt = filled($ogImageAlt) ? $ogImageAlt : null;
+
+    if ($pageImage) {
+        $ogImageUrl = $pageImage;
+        $ogImageAltText = $pageImageAlt ?? $metaTitle;
         $ogWidth = $ogImageWidth;
         $ogHeight = $ogImageHeight;
     } else {
@@ -105,8 +113,11 @@
             <meta property="og:image:width" content="{{ $ogWidth }}">
             <meta property="og:image:height" content="{{ $ogHeight }}">
         @endif
+        {{-- Describes the share card for anyone reading it with a screen
+             reader. Paired with the image above — see $ogImageAltText. --}}
         <meta property="og:image:alt" content="{{ $ogImageAltText }}">
     @endif
+
     {{-- Article-level tags for crawlers that build topic/date indexes.
          Only meaningful on article pages; the layout stays silent elsewhere. --}}
     @if($ogType === 'article')
@@ -123,7 +134,6 @@
             <meta property="article:tag" content="{{ $articleTag }}">
         @endforeach
     @endif
-
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ $metaTitle }}">
     <meta name="twitter:description" content="{{ $metaDescription }}">
