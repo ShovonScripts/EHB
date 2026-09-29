@@ -283,20 +283,38 @@ class SiteSettings
      * Cached separately from `all()` so the media lookup does not run on every
      * request that renders a page without its own image.
      */
-    public static function defaultOgImageUrl(): ?string
+    /**
+     * The site-wide fallback share image as a Media row, or null.
+     *
+     * Same resolution as the URL below, but the layout needs more than the
+     * URL: the fallback's own dimensions for og:image:width/height. Resolved
+     * once per request (the layout asks only when the page has no image of
+     * its own); deliberately not cached across requests, because the row's
+     * file can be replaced from the media library without touching settings,
+     * and a stale width/height on a share card is worse than one query.
+     */
+    public static function defaultOgImage(): ?Media
     {
+        if (static::$ogImage !== false) {
+            return static::$ogImage;
+        }
+
         $configured = static::get('default_og_image_media_id');
 
-        return Cache::remember(self::OG_CACHE_KEY, self::TTL, function () use ($configured) {
-            if ($configured) {
-                // `?? portraitUrl()`, not `?->url` on its own: an id that does
-                // not resolve must degrade to the portrait, never to null. See
-                // the resolution order in the docblock above.
-                return Media::find($configured)?->url ?? static::portraitUrl();
-            }
+        // `?? portrait`, not null on its own: an id that does not resolve
+        // must degrade to the portrait, never to null. See the resolution
+        // order in the docblock above.
+        return static::$ogImage = ($configured ? Media::find($configured) : null)
+            ?? JournalistProfile::current()?->photo;
+    }
 
-            return static::portraitUrl();
-        });
+    public static function defaultOgImageUrl(): ?string
+    {
+        return Cache::remember(
+            self::OG_CACHE_KEY,
+            self::TTL,
+            fn () => static::defaultOgImage()?->url
+        );
     }
 
     /** The journalist's portrait URL, or null when none is uploaded. */

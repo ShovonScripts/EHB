@@ -347,7 +347,7 @@ class ContentItemForm
                                             ->directory('content-items/og')
                                             ->altTextField('seo_og_image_alt_text')
                                             ->columnSpanFull()
-                                            ->helperText('1200×630px recommended for social sharing'),
+                                            ->helperText('1200×630px recommended. Optional — leave empty to share the Featured image instead; if that is empty too, the site-wide share image from Settings is used.'),
 
                                         TextInput::make('seo_og_image_alt_text')
                                             ->label('OG Image Alt Text')
