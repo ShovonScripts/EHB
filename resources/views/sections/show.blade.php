@@ -18,7 +18,12 @@
         ],
     ];
     if ($item->featuredImage) {
-        $jsonLd['image'] = [$item->featuredImage->url];
+        // Absolute, because a consumer of structured data is not a browser
+        // sitting on this page: it has no base URL to resolve `/storage/…`
+        // against, and an unresolvable `image` means the piece cannot be
+        // surfaced as a rich result. The rendered <img> elsewhere on this page
+        // still uses the root-relative `url`; only the metadata is absolutised.
+        $jsonLd['image'] = [$item->ogImage?->absolute_url ?: $item->featuredImage->absolute_url];
     }
 
     $crumbs = [
@@ -32,6 +37,7 @@
     :description="$item->seo_description ?: \Illuminate\Support\Str::limit($item->summary, 155)"
     :canonical="$item->canonical_url_override ?: url($item->publicPath())"
     :og-image="$item->ogImage?->url ?: $item->featuredImage?->url"
+    :og-image-alt="$item->ogImage?->alt_text ?: $item->featuredImage?->alt_text"
     og-type="article"
     :json-ld="$jsonLd"
     :breadcrumbs="$crumbs"

@@ -33,11 +33,30 @@
     // are the exception: Open Graph and Twitter images are fetched by crawlers
     // that resolve them against nothing, so they must be absolute. Absolutise
     // here, once, rather than at each call site.
-    $ogImageUrl = $ogImage ?: \App\Support\SiteSettings::defaultOgImageUrl();
+    $pageImage = $ogImage ?: null;
+    $ogImageUrl = $pageImage ?? \App\Support\SiteSettings::defaultOgImageUrl();
 
     if ($ogImageUrl !== null && str_starts_with($ogImageUrl, '/')) {
         $ogImageUrl = url($ogImageUrl);
     }
+
+    // og:image:alt describes *the image that was actually emitted*, so it is
+    // resolved alongside it rather than independently. The setting is the alt
+    // text for the site-wide share image: applying it first (which is what
+    // `defaultOgImageAlt() ?? $ogImageAlt` did) stamped one generic sentence
+    // onto every page that had a picture of its own, and the page's own alt
+    // could never win. A page image therefore takes the page's alt — falling
+    // back to the title, which is at least about this page — and only the
+    // fallback image takes the configured default.
+    // `filled(...) ? ... : null`, not `??`: a call site that passes an empty
+    // string (a Media row with no alt text) must fall through to the title
+    // rather than emitting `content=""`, which is an alt attribute that
+    // describes nothing.
+    $pageImageAlt = filled($ogImageAlt) ? $ogImageAlt : null;
+
+    $ogImageAltText = $pageImage
+        ? ($pageImageAlt ?? $metaTitle)
+        : (\App\Support\SiteSettings::defaultOgImageAlt() ?? $metaTitle);
 
     $canonicalUrl = $canonical ?? url()->current();
 @endphp
@@ -76,8 +95,8 @@
     @if($ogImageUrl)
         <meta property="og:image" content="{{ $ogImageUrl }}">
         {{-- Describes the share card for anyone reading it with a screen
-             reader. Falls back to the piece's own image alt text. --}}
-        <meta property="og:image:alt" content="{{ \App\Support\SiteSettings::defaultOgImageAlt() ?? $ogImageAlt ?? $metaTitle }}">
+             reader. Paired with the image above — see $ogImageAltText. --}}
+        <meta property="og:image:alt" content="{{ $ogImageAltText }}">
     @endif
 
     <meta name="twitter:card" content="summary_large_image">

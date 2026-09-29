@@ -75,9 +75,15 @@ class SitemapController extends Controller
             $entries[] = [
                 'loc' => route('pages.show', $page->slug),
                 'lastmod' => $page->updated_at ?? $lastModified,
+                // `absolute_url`, not `url`: Media URLs are root-relative so a
+                // page renders on any host (see MediaUrlTest), but a sitemap is
+                // read by crawlers with no page to resolve against, and Google's
+                // image extension requires an absolute `<image:loc>`. A
+                // root-relative one is simply discarded, so every image this
+                // sitemap advertised was invisible to image search.
                 'images' => $page->ogImage
                     ? [[
-                        'loc' => $page->ogImage->url,
+                        'loc' => $page->ogImage->absolute_url,
                         'title' => $page->title,
                     ]]
                     : [],
@@ -90,7 +96,7 @@ class SitemapController extends Controller
                 'lastmod' => $item->updated_at ?? $lastModified,
                 'images' => $item->featuredImage
                     ? [[
-                        'loc' => $item->featuredImage->url,
+                        'loc' => $item->featuredImage->absolute_url,
                         'title' => $item->title,
                     ]]
                     : [],

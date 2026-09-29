@@ -43,6 +43,7 @@
     :description="$item->seo_description ?: \Illuminate\Support\Str::limit($item->summary, 155)"
     :canonical="$item->canonical_url_override ?: url($item->publicPath())"
     :og-image="$item->ogImage?->url ?: $item->featuredImage?->url"
+    :og-image-alt="$item->ogImage?->alt_text ?: $item->featuredImage?->alt_text"
     og-type="article"
     :json-ld="$jsonLd"
     :breadcrumbs="$crumbs"

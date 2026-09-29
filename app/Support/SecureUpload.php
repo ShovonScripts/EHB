@@ -172,6 +172,19 @@ class SecureUpload
      */
     public static function sanitize(UploadedFile $file, string $attribute = 'file', ?array $allowedMimeTypes = null): array
     {
+        if (! self::canSniffMimeTypes()) {
+            // Same reasoning as the GD guard below: a deployment fact, reported
+            // as a form error rather than a 500. Every check in this method
+            // starts from the sniffed type, so without ext-fileinfo there is
+            // nothing here that can run — `new finfo` raises `Error`, which no
+            // form catches, and the admin would see "Server Error" on an
+            // upload with nothing saying why.
+            throw self::reject(
+                $attribute,
+                'This server cannot inspect uploaded files: the PHP fileinfo extension is not installed. Uploads will work once it is enabled.'
+            );
+        }
+
         $mime = self::detectMimeType($file);
         $allowed = self::allowedMimeTypes($allowedMimeTypes);
 
@@ -208,6 +221,35 @@ class SecureUpload
             'mime' => $mime,
             'filename' => self::randomFileName($mime),
         ];
+    }
+
+    /**
+     * Whether the image operations this class depends on are available.
+     *
+     * Every function below is provided by GD (`imagecreatefromstring`,
+     * `imagescale`, `imagejpeg`, `imagepng`, `imagewebp`), which is why
+     * composer.json declares `ext-gd` rather than treating it as optional:
+     * without it no image can be re-encoded, and an image that is not
+     * re-encoded is not one this application is willing to store.
+     */
+    public static function canProcessImages(): bool
+    {
+        return function_exists('imagecreatefromstring')
+            && function_exists('imagejpeg')
+            && function_exists('imagepng');
+    }
+
+    /**
+     * Whether content sniffing is available.
+     *
+     * Every check in `sanitize()` begins with the type sniffed from the file's
+     * bytes, and that sniffing is `ext-fileinfo`. composer.json requires it for
+     * the same reason it requires ext-gd: without it there is no upload path
+     * this class is willing to accept.
+     */
+    public static function canSniffMimeTypes(): bool
+    {
+        return class_exists('finfo');
     }
 
     /**
@@ -269,6 +311,19 @@ class SecureUpload
      */
     private static function reencodeImage(string $contents, string $mimeType, string $attribute): array
     {
+        if (! self::canProcessImages()) {
+            // A deployment fact, not a bad upload. Re-encoding is the security
+            // boundary (§11) and it is GD that does it, so without the
+            // extension there is no safe way to store an image — but the
+            // caller should be told that plainly. Calling imagecreatefromstring
+            // directly raises an uncatchable-by-the-form `Error`, which surfaces
+            // as a 500 on save with nothing on screen about the cause.
+            throw self::reject(
+                $attribute,
+                'This server cannot process images: the PHP GD extension is not installed. Uploads will work once it is enabled.'
+            );
+        }
+
         $size = @getimagesizefromstring($contents);
 
         if ($size === false) {
