@@ -1,4 +1,4 @@
-﻿# SEO.md
+# SEO.md
 
 ## 1. Page Titles
 
@@ -16,7 +16,11 @@ Auto-derived from `summary`/dek by default, editable override via `seo_descripti
 
 ## 4. Open Graph
 
-Every content item and key page emits `og:title`, `og:description`, `og:image` (featured image or default), `og:type` (`article` for content items, `profile`/`website` elsewhere), `og:url`.
+Every content item and key page emits `og:title`, `og:description`, `og:image` (dedicated OG image → featured image → site-wide default from Settings), `og:type` (`article` for content items, `website` elsewhere), `og:url`.
+
+The share image is always passed whole — URL, alt text and stored dimensions together — so `og:image`, `og:image:alt` and `og:image:width`/`og:image:height` describe the same picture. The page's own values win when the page supplies the image; the default image's own values apply when it is the fallback. Mixing them (the default's alt on the page's image) is a defect, covered by `ShareCardTest`.
+
+Article pages additionally emit `article:published_time`, `article:modified_time`, `article:section` (category) and one `article:tag` per tag.
 
 ## 5. Twitter/X Cards
 

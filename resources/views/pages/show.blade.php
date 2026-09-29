@@ -4,6 +4,8 @@
     :canonical="$page->canonical_url_override ?: url('/'.$page->slug)"
     :og-image="$page->ogImage?->url"
     :og-image-alt="$page->ogImage?->alt_text"
+    :og-image-width="$page->ogImage?->width"
+    :og-image-height="$page->ogImage?->height"
     :breadcrumbs="[['label' => $page->title]]"
 >
     <article class="container-reading py-14">

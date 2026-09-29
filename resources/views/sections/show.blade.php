@@ -30,15 +30,28 @@
         ['label' => $definition['label'], 'url' => route('section.'.$section)],
         ['label' => $item->title],
     ];
+
+    // The share card resolves one image and passes it whole — URL, alt text
+    // and stored dimensions together — so the layout's og:image, og:image:alt
+    // and og:image:width/height always describe the same picture. A dedicated
+    // OG image wins; otherwise the featured image stands in; otherwise the
+    // layout falls back to the site-wide default from Settings.
+    $shareImage = $item->ogImage ?? $item->featuredImage;
 @endphp
 
 <x-app-layout
     :title="$item->seo_title ?: $item->title"
     :description="$item->seo_description ?: \Illuminate\Support\Str::limit($item->summary, 155)"
     :canonical="$item->canonical_url_override ?: url($item->publicPath())"
-    :og-image="$item->ogImage?->url ?: $item->featuredImage?->url"
-    :og-image-alt="$item->ogImage?->alt_text ?: $item->featuredImage?->alt_text"
+    :og-image="$shareImage?->url"
+    :og-image-alt="$shareImage?->alt_text"
+    :og-image-width="$shareImage?->width"
+    :og-image-height="$shareImage?->height"
     og-type="article"
+    :article-published="$item->published_at?->toIso8601String()"
+    :article-modified="$item->updated_at?->toIso8601String()"
+    :article-section="$item->category?->name"
+    :article-tags="$item->tags->pluck('name')->all()"
     :json-ld="$jsonLd"
     :breadcrumbs="$crumbs"
 >

@@ -3,11 +3,17 @@
     'description' => null,
     'canonical' => null,
     'ogImage' => null,
+    'ogImageAlt' => null,
+    'ogImageWidth' => null,
+    'ogImageHeight' => null,
     'ogType' => 'website',
+    'articlePublished' => null,
+    'articleModified' => null,
+    'articleSection' => null,
+    'articleTags' => [],
     'noindex' => false,
     'jsonLd' => null,
     'breadcrumbs' => null,
-    'ogImageAlt' => null,
 ])
 
 @php
@@ -33,30 +39,31 @@
     // are the exception: Open Graph and Twitter images are fetched by crawlers
     // that resolve them against nothing, so they must be absolute. Absolutise
     // here, once, rather than at each call site.
-    $pageImage = $ogImage ?: null;
-    $ogImageUrl = $pageImage ?? \App\Support\SiteSettings::defaultOgImageUrl();
+    // Alt text and dimensions always describe the image actually emitted.
+    // The page's own values win when the page supplies the image; the
+    // default image's own values apply when it is the fallback. Mixing them
+    // — the default's alt on the page's image — was a real defect: every
+    // share card on the site carried one generic alt text (ShareCardTest).
+    if ($ogImage) {
+        $ogImageUrl = $ogImage;
+
+        // `filled(...) ? ... : null`, not `??`: a call site passing an empty
+        // string (a Media row with no alt text) must fall through to the
+        // title rather than emitting content="", which describes nothing.
+        $ogImageAltText = (filled($ogImageAlt) ? $ogImageAlt : null) ?? $metaTitle;
+        $ogWidth = $ogImageWidth;
+        $ogHeight = $ogImageHeight;
+    } else {
+        $fallbackImage = \App\Support\SiteSettings::defaultOgImage();
+        $ogImageUrl = $fallbackImage?->url;
+        $ogImageAltText = \App\Support\SiteSettings::defaultOgImageAlt() ?? $metaTitle;
+        $ogWidth = $fallbackImage?->width;
+        $ogHeight = $fallbackImage?->height;
+    }
 
     if ($ogImageUrl !== null && str_starts_with($ogImageUrl, '/')) {
         $ogImageUrl = url($ogImageUrl);
     }
-
-    // og:image:alt describes *the image that was actually emitted*, so it is
-    // resolved alongside it rather than independently. The setting is the alt
-    // text for the site-wide share image: applying it first (which is what
-    // `defaultOgImageAlt() ?? $ogImageAlt` did) stamped one generic sentence
-    // onto every page that had a picture of its own, and the page's own alt
-    // could never win. A page image therefore takes the page's alt — falling
-    // back to the title, which is at least about this page — and only the
-    // fallback image takes the configured default.
-    // `filled(...) ? ... : null`, not `??`: a call site that passes an empty
-    // string (a Media row with no alt text) must fall through to the title
-    // rather than emitting `content=""`, which is an alt attribute that
-    // describes nothing.
-    $pageImageAlt = filled($ogImageAlt) ? $ogImageAlt : null;
-
-    $ogImageAltText = $pageImage
-        ? ($pageImageAlt ?? $metaTitle)
-        : (\App\Support\SiteSettings::defaultOgImageAlt() ?? $metaTitle);
 
     $canonicalUrl = $canonical ?? url()->current();
 @endphp
@@ -94,9 +101,33 @@
     <meta property="og:url" content="{{ $canonicalUrl }}">
     @if($ogImageUrl)
         <meta property="og:image" content="{{ $ogImageUrl }}">
+        {{-- Explicit dimensions let crawlers lay out the card before the image
+             finishes downloading; without them the first scrape of a URL can
+             render a collapsed card with no image until the crawler revisits.
+             Emitted only when known (stored on the Media row at upload). --}}
+        @if($ogWidth && $ogHeight)
+            <meta property="og:image:width" content="{{ $ogWidth }}">
+            <meta property="og:image:height" content="{{ $ogHeight }}">
+        @endif
         {{-- Describes the share card for anyone reading it with a screen
              reader. Paired with the image above — see $ogImageAltText. --}}
         <meta property="og:image:alt" content="{{ $ogImageAltText }}">
+    @endif
+    {{-- Article-level tags for crawlers that build topic/date indexes.
+         Only meaningful on article pages; the layout stays silent elsewhere. --}}
+    @if($ogType === 'article')
+        @if($articlePublished)
+            <meta property="article:published_time" content="{{ $articlePublished }}">
+        @endif
+        @if($articleModified)
+            <meta property="article:modified_time" content="{{ $articleModified }}">
+        @endif
+        @if($articleSection)
+            <meta property="article:section" content="{{ $articleSection }}">
+        @endif
+        @foreach((array) $articleTags as $articleTag)
+            <meta property="article:tag" content="{{ $articleTag }}">
+        @endforeach
     @endif
 
     <meta name="twitter:card" content="summary_large_image">

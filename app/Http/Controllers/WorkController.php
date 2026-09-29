@@ -195,6 +195,7 @@ class WorkController extends Controller
                     'category',
                     'publication.logo',
                     'featuredImage',
+                    'ogImage',
                     'tags',
                     'topics',
                     'relatedContent' => fn ($q) => $q->published()

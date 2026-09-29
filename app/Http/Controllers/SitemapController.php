@@ -90,13 +90,21 @@ class SitemapController extends Controller
             ];
         }
 
-        foreach (ContentItem::published()->with('featuredImage')->orderBy('id')->get() as $item) {
+        foreach (ContentItem::published()->with(['featuredImage', 'ogImage'])->orderBy('id')->get() as $item) {
+            // The image extension advertises the same picture the share card
+            // shows: dedicated OG image first, featured image as fallback.
+            $shareImage = $item->ogImage ?? $item->featuredImage;
+
             $entries[] = [
                 'loc' => url($item->publicPath()),
                 'lastmod' => $item->updated_at ?? $lastModified,
-                'images' => $item->featuredImage
+                'images' => $shareImage
                     ? [[
-                        'loc' => $item->featuredImage->absolute_url,
+                        // Absolute, not `$shareImage->url`: Media URLs are
+                        // root-relative so a page renders on any host (see
+                        // MediaUrlTest), but a crawler resolves nothing and
+                        // Google discards a relative `<image:loc>`.
+                        'loc' => $shareImage->absolute_url,
                         'title' => $item->title,
                     ]]
                     : [],
