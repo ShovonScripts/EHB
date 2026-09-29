@@ -54,7 +54,29 @@ return [
             // traverse — the site loads and every image 404s. Where the symlink
             // does work (nginx, `artisan serve`) the web server answers first
             // and this route is never reached, so it is purely a fallback.
-            'url' => '/storage',
+            //
+            // MEDIA_URL exists for the deployment this string cannot describe:
+            // an install under a subdirectory (http://localhost/ehb/public,
+            // which is how XAMPP and most shared hosts serve a project). A
+            // root-relative `/storage/…` is resolved by the browser against the
+            // *domain root*, where there is nothing to serve, so every page
+            // image 404s even though the file is on disk, the /storage route is
+            // registered, and the admin panel — whose own assets come from
+            // APP_URL — looks perfectly fine. The diagnostic command
+            // (`php artisan media:doctor`) detects that combination; the fix is
+            // one line in .env:
+            //
+            //     MEDIA_URL=/ehb/public/storage
+            //
+            // Laravel has ASSET_URL for the same reason and the same shape. At
+            // a normal domain root the default is already correct, which is why
+            // this stays opt-in rather than being derived from APP_URL.
+            //
+            // A prefixed value also moves the route Laravel registers for this
+            // disk, so bootstrap/app.php registers the reachable form of it as
+            // well: that way the files are served in a subdirectory layout even
+            // when the web server cannot follow `public/storage`.
+            'url' => env('MEDIA_URL', '/storage'),
             'visibility' => 'public',
             'serve' => true,
             'throw' => false,

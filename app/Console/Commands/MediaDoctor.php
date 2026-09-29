@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Media;
+use App\Support\Urls;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
@@ -73,6 +74,7 @@ class MediaDoctor extends Command
             );
         }
 
+        $this->checkBasePath();
         $this->checkLink();
         $files = $this->checkFiles($diskName);
         $this->checkRoutes();
@@ -118,8 +120,14 @@ class MediaDoctor extends Command
         $expected = storage_path('app/public');
 
         if (! file_exists($link) && ! is_link($link)) {
-            $this->line('  No public/storage entry. Laravel\'s /storage route is then the only thing that can serve uploads.');
+            $this->line('  No public/storage entry. At a domain root Laravel\'s /storage route serves uploads instead.');
             $this->line('  Fix: php artisan storage:link   (harmless if the route already works)');
+
+            if ($this->installedUnderPath() !== '') {
+                $this->line('  This install is served from a subdirectory, where Laravel\'s own route is registered at');
+                $this->line('  a path no request matches; bootstrap/app.php registers the reachable form itself, so');
+                $this->line('  uploads are served anyway. The symlink stays optional — see the route check below.');
+            }
 
             return;
         }
@@ -252,17 +260,30 @@ class MediaDoctor extends Command
             $prefix = rtrim((string) (parse_url($diskUrl, PHP_URL_PATH) ?: $diskUrl), '/');
         }
 
-        $uri = trim($prefix, '/').'/{path}';
+        // Two URIs are in play whenever the site is served from a subdirectory.
+        // Laravel registers its serve route at the disk's URL path, but it
+        // matches against the request path with the app's base path removed —
+        // so the URI that actually answers is the browser's path, minus the
+        // part the app is mounted under.
+        $registered = trim($prefix, '/').'/{path}';
+        $basePath = $this->installedUnderPath();
+        $reachable = $registered;
+
+        if ($basePath !== '' && str_starts_with($prefix.'/', $basePath.'/')) {
+            $reachable = ltrim(substr($prefix, strlen($basePath)), '/').'/{path}';
+        }
+
+        $wanted = array_unique([$reachable, $registered]);
         $matches = [];
 
         foreach (Route::getRoutes() as $route) {
-            if (in_array('GET', $route->methods(), true) && $route->uri() === $uri) {
-                $matches[] = $route->getName() ?: $route->getActionName();
+            if (in_array('GET', $route->methods(), true) && in_array($route->uri(), $wanted, true)) {
+                $matches[] = $route->uri().'  ->  '.($route->getName() ?: $route->getActionName());
             }
         }
 
         if ($matches === []) {
-            $this->components->warn('  No GET route is registered for '.$uri.'.');
+            $this->components->warn('  No GET route is registered for '.$reachable.'.');
 
             if (app()->routesAreCached()) {
                 $this->line('  Routes are cached — rebuild them after changing the disks config:');
@@ -271,17 +292,28 @@ class MediaDoctor extends Command
                 $this->line('  Set "serve" => true on the public disk in config/filesystems.php.');
             }
 
-            $this->problems[] = "No route is registered for {$uri}, so uploads can only be served by the symlink.";
+            $this->problems[] = "No route is registered for {$reachable}, so uploads can only be served by the symlink.";
 
             return;
         }
 
-        foreach ($matches as $name) {
-            $this->line('  '.$uri.'  ->  '.$name);
+        foreach ($matches as $match) {
+            $this->line('  '.$match);
         }
 
         if (count($matches) > 1) {
             $this->line('  The last one listed is the one that answers (routes are keyed by URI).');
+        }
+
+        if ($basePath !== '') {
+            if (! str_starts_with($prefix.'/', $basePath.'/')) {
+                $this->line('  Media URLs ('.$prefix.'/…) sit outside the app base '.$basePath.', so a request for one');
+                $this->line('  never reaches this application — fix MEDIA_URL first (see above).');
+            } elseif ($reachable !== $registered) {
+                $this->line('  A browser asking for '.$prefix.'/… reaches the app as /'.ltrim($reachable, '/').', so the');
+                $this->line('  route at '.$reachable.' is the one that serves it. Laravel\'s own route is registered at');
+                $this->line('  '.$registered.' and is never matched in this layout.');
+            }
         }
 
         if (app()->routesAreCached()) {
@@ -315,33 +347,137 @@ class MediaDoctor extends Command
         // on this one. Printing it next to the probe makes that visible.
         $this->line('  app.url: '.config('app.url'));
 
+        $mediaUrl = rtrim((string) config('filesystems.disks.public.url', '/storage'), '/');
+
         foreach (array_slice($paths, 0, max(1, (int) $this->option('limit'))) as $path) {
-            $url = url('/storage/'.$path);
+            $relative = $mediaUrl.'/'.ltrim($path, '/');
 
-            try {
-                $response = Http::timeout(5)->get($url);
-                $status = $response->status();
-            } catch (Throwable $e) {
-                $this->components->warn('  '.$url.' — could not be fetched ('.$e->getMessage().')');
-                $this->line('  If this host cannot reach itself, use --no-http and check the URL from a browser.');
+            // The URL a browser fetches for the page's own <img src>: a
+            // root-relative URL resolves against the *domain* root, so the
+            // app's base path is discarded — exactly what Urls::absolute does
+            // (and what the page's own og:image carries).
+            $emitted = (string) Urls::absolute($relative);
 
-                $this->problems[] = 'The app could not fetch its own media URL — check APP_URL and any firewall.';
+            $status = $this->fetchStatus($emitted);
 
+            if ($status === null) {
                 return;
             }
 
-            $this->line(sprintf('  %s  %s', str_pad((string) $status, 4), $url));
+            $this->line(sprintf('  %s  %s  (as the page renders it)', str_pad((string) $status, 4), $emitted));
 
-            if ($status !== 200) {
-                $this->problems[] = "GET {$url} returned {$status} rather than 200.";
+            if ($status === 200) {
+                continue;
+            }
 
-                if (in_array($status, [403, 404], true)) {
-                    $this->line('  The file is on disk but the URL is not being served: something in front of Laravel');
-                    $this->line('  is answering /storage (an old public/storage directory, a web-server rule, or a proxy).');
+            $this->problems[] = "GET {$emitted} returned {$status} rather than 200.";
+
+            // Laravel's own idea of the same URL: the identical path with the
+            // app's base path in front. Probing it too turns a 404 into a
+            // diagnosis — if only this one answers, the install is in a
+            // subdirectory and the page's URL is missing that prefix.
+            $viaApp = url($relative);
+
+            if ($viaApp !== $emitted) {
+                $appStatus = $this->fetchStatus($viaApp);
+
+                if ($appStatus !== null) {
+                    $this->line(sprintf('  %s  %s  (with the app base path)', str_pad((string) $appStatus, 4), $viaApp));
                 }
 
-                return;
+                if ($appStatus === 200) {
+                    $this->line('  Only the second URL is served: this install is served from a subdirectory, and the');
+                    $this->line('  page emits a URL without that prefix. Set MEDIA_URL in .env, then clear the config');
+                    $this->line('  and page caches — see the "Where the site is installed" section above.');
+
+                    return;
+                }
             }
+
+            $this->line('  The file is on disk but the URL is not being served. Either the web server cannot see it');
+            $this->line('  (no public/storage — run `php artisan storage:link`, or add an Apache Alias), or');
+            $this->line('  something in front of Laravel is answering it (a rule, a proxy, an old file).');
+
+            return;
         }
+    }
+
+    /**
+     * Fetch one URL; null when the request itself failed (host unreachable).
+     */
+    private function fetchStatus(string $url): ?int
+    {
+        try {
+            return Http::timeout(5)->get($url)->status();
+        } catch (Throwable $e) {
+            $this->components->warn('  '.$url.' — could not be fetched ('.$e->getMessage().')');
+            $this->line('  If this host cannot reach itself, use --no-http and check the URL from a browser.');
+
+            $this->problems[] = 'The app could not fetch its own media URL — check APP_URL and any firewall.';
+
+            return null;
+        }
+    }
+
+    /**
+     * The path part of APP_URL, or '' when the site is at a domain root.
+     *
+     * `http://localhost/ehb/public` is a normal way to run this on XAMPP and on
+     * shared hosting, and it is the one layout where a root-relative media URL
+     * cannot work and the /storage fallback route is not reached.
+     */
+    private function installedUnderPath(): string
+    {
+        return rtrim((string) (parse_url((string) config('app.url'), PHP_URL_PATH) ?? ''), '/');
+    }
+
+    /**
+     * Is the app installed under a path?
+     *
+     * `http://localhost/ehb/public` is a normal way to run this on XAMPP (and
+     * on plenty of shared hosts), and it is the one deployment where a
+     * root-relative media URL cannot work: `/storage/…` is resolved against the
+     * domain root. Everything else on the page — the CSS, the admin panel's own
+     * assets — is built from APP_URL and keeps working, which is what makes
+     * this look like "only the images are broken".
+     */
+    private function checkBasePath(): void
+    {
+        $this->newLine();
+        $this->components->info('Where the site is installed');
+
+        $basePath = $this->installedUnderPath();
+        $mediaUrl = (string) config('filesystems.disks.public.url', '/storage');
+
+        $this->line('  app.url:          '.config('app.url'));
+        $this->line('  public disk url:  '.$mediaUrl);
+
+        if ($basePath === '') {
+            $this->line('  At a domain root — the root-relative media URL is correct.');
+
+            return;
+        }
+
+        if (str_starts_with($mediaUrl, $basePath.'/')) {
+            $this->line('  Served from '.$basePath.' and the media URL includes it. Correct.');
+
+            return;
+        }
+
+        $this->components->warn(
+            '  The app is served from the subdirectory '.$basePath.', but media URLs do not include it.'
+        );
+        $this->line('  A page image is emitted as `'.$mediaUrl.'/…`, which a browser resolves against the');
+        $this->line('  domain root — where this app does not live. The admin panel looks fine because its');
+        $this->line('  own assets are built from APP_URL, which does include the subdirectory.');
+        $this->newLine();
+        $this->line('  Fix — add one line to .env, then run `php artisan config:clear`:');
+        $this->line('    MEDIA_URL='.$basePath.$mediaUrl);
+        $this->line('  Also run `php artisan cache:clear`: pages cached with the old URL last ~2 minutes.');
+        $this->line('  In this layout the files are served by the fallback route registered in');
+        $this->line('  bootstrap/app.php (or directly by the web server when public/storage exists).');
+        $this->newLine();
+
+        $this->problems[] = 'Media URLs omit the subdirectory the app is served from (set MEDIA_URL).';
     }
 }

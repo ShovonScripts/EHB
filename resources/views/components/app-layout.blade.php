@@ -61,9 +61,10 @@
         $ogHeight = $fallbackImage?->height;
     }
 
-    if ($ogImageUrl !== null && str_starts_with($ogImageUrl, '/')) {
-        $ogImageUrl = url($ogImageUrl);
-    }
+    // `Urls::absolute`, not `url()`: media URLs already carry the app's base
+    // path when the site is installed in a subdirectory, and url() would
+    // prepend it a second time. See App\Support\Urls.
+    $ogImageUrl = \App\Support\Urls::absolute($ogImageUrl);
 
     $canonicalUrl = $canonical ?? url()->current();
 @endphp

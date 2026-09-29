@@ -13,6 +13,13 @@ abstract class TestCase extends BaseTestCase
 
         $this->flushLivewireRenderState();
         $this->flushSiteSettingsMemo();
+
+        // The media URL is deployment configuration: an install served from a
+        // subdirectory sets MEDIA_URL to a prefixed path. Tests assert the
+        // default shape — root-relative `/storage/…` — so pin it here rather
+        // than inheriting whatever the developer's .env holds. The test that
+        // covers the prefixed layout overrides this in its own setUp.
+        config(['filesystems.disks.public.url' => '/storage']);
     }
 
     /**

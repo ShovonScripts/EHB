@@ -171,8 +171,12 @@ class SiteSettingsTest extends TestCase
         $this->assertNotEmpty($og, 'no og:image tag emitted');
 
         // Media URLs are root-relative; the social card is absolutised at emit
-        // time because crawlers resolve og:image against nothing.
-        $this->assertSame(url($card->url), $og[1]);
+        // time because crawlers resolve og:image against nothing. Assert the
+        // absolute form and the file it names rather than `url($card->url)` —
+        // that assumes an unprefixed disk URL and would fail for the install
+        // layout that configures MEDIA_URL.
+        $this->assertStringStartsWith('http', $og[1]);
+        $this->assertStringEndsWith('/'.$card->file_path, $og[1]);
     }
 
     /** With neither configured, no og:image tag is emitted rather than an empty one. */

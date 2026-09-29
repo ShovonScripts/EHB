@@ -22,6 +22,19 @@ class MediaDoctorCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Pin the deployment shape: APP_URL and the media URL are exactly what
+        // the command inspects, so a developer whose .env names a subdirectory
+        // must not change what these tests report.
+        config([
+            'app.url' => 'http://localhost',
+            'filesystems.disks.public.url' => '/storage',
+        ]);
+    }
+
     private function media(string $path, string $disk = 'public'): Media
     {
         return Media::create([
@@ -77,6 +90,27 @@ class MediaDoctorCommandTest extends TestCase
         $this->artisan('media:doctor --file=journalist/profile/there.webp --no-http')
             ->assertSuccessful()
             ->expectsOutputToContain('present on the public disk');
+    }
+
+    /**
+     * An install under a subdirectory (`http://localhost/ehb/public`, the
+     * XAMPP layout): APP_URL carries the path, the media URL does not, so every
+     * image on the site resolves against the domain root and 404s. The command
+     * has to name it and print the one-line fix — a missing symlink or a
+     * missing file is not what is wrong here.
+     */
+    public function test_an_install_in_a_subdirectory_without_media_url_is_flagged(): void
+    {
+        config(['app.url' => 'http://localhost/ehb/public']);
+
+        $this->artisan('media:doctor --no-http')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('MEDIA_URL=/ehb/public/storage');
+
+        // With the fix applied the same install is healthy.
+        config(['filesystems.disks.public.url' => '/ehb/public/storage']);
+
+        $this->artisan('media:doctor --no-http')->assertSuccessful();
     }
 
     /**

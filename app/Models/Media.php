@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\RecordsActivity;
+use App\Support\Urls;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -112,13 +113,12 @@ class Media extends Model
      * JSON-LD `image`, where structured data wants a crawler-followable URL.
      *
      * Everything that renders a picture on a page keeps using `url`, because a
-     * relative src is what makes the site host-independent.
+     * relative src is what makes the site host-independent. See App\Support\Urls
+     * for why this is not simply `url($relative)`.
      */
     public function getAbsoluteUrlAttribute(): string
     {
-        return preg_match('#^https?://#i', $this->url) === 1
-            ? $this->url
-            : url($this->url);
+        return (string) Urls::absolute($this->url);
     }
 
     public function uploader(): BelongsTo
