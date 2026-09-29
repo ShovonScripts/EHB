@@ -39,7 +39,23 @@
     // are the exception: Open Graph and Twitter images are fetched by crawlers
     // that resolve them against nothing, so they must be absolute. Absolutise
     // here, once, rather than at each call site.
-    $ogImageUrl = $ogImage ?: \App\Support\SiteSettings::defaultOgImageUrl();
+    // Alt text and dimensions always describe the image actually emitted.
+    // The page's own values win when the page supplies the image; the
+    // default image's own values apply when it is the fallback. Mixing them
+    // — the default's alt on the page's image — was a real defect: every
+    // share card on the site carried one generic alt text (ShareCardTest).
+    if ($ogImage) {
+        $ogImageUrl = $ogImage;
+        $ogImageAltText = $ogImageAlt ?? $metaTitle;
+        $ogWidth = $ogImageWidth;
+        $ogHeight = $ogImageHeight;
+    } else {
+        $fallbackImage = \App\Support\SiteSettings::defaultOgImage();
+        $ogImageUrl = $fallbackImage?->url;
+        $ogImageAltText = \App\Support\SiteSettings::defaultOgImageAlt() ?? $metaTitle;
+        $ogWidth = $fallbackImage?->width;
+        $ogHeight = $fallbackImage?->height;
+    }
 
     if ($ogImageUrl !== null && str_starts_with($ogImageUrl, '/')) {
         $ogImageUrl = url($ogImageUrl);
