@@ -56,6 +56,12 @@ class MediaDoctor extends Command
 
     public function handle(): int
     {
+        // The Artisan application resolves one command instance and reuses it
+        // for every call, so without this a problem found by an earlier run is
+        // still in the list on the next one — and a command that has just been
+        // fixed by, say, restoring the file would keep exiting non-zero.
+        $this->problems = [];
+
         $diskName = 'public';
         $disk = config("filesystems.disks.{$diskName}") ?? [];
 
@@ -104,10 +110,18 @@ class MediaDoctor extends Command
      * `public/storage` — the symlink `storage:link` creates.
      *
      * Three distinct states, and only the first is healthy: absent (the
-     * fallback route has to answer every request), present but a real directory
-     * (an earlier deploy copied files there; new uploads go to
-     * `storage/app/public` and never appear), or present and pointing somewhere
-     * else (a moved or rebuilt storage path).
+     * fallback route has to answer every request), present but not resolving to
+     * `storage/app/public` (a real directory left by an earlier deploy that
+     * copied files there — new uploads go to `storage/app/public` and never
+     * appear — or a link pointing somewhere stale), and present and resolving
+     * to the right place.
+     *
+     * "Resolving to the right place" is the test, not `is_link()`: on Windows
+     * `storage:link` creates a *junction*, and `is_link()` reports a junction as
+     * a plain directory, so asking `is_link()` alone condemns a perfectly
+     * healthy Windows install. `realpath()` resolves both a symlink and a
+     * junction to the same target, so it answers the question actually being
+     * asked — does this path lead to the upload directory — on every platform.
      */
     private function checkLink(): void
     {
@@ -124,24 +138,20 @@ class MediaDoctor extends Command
             return;
         }
 
-        if (! is_link($link)) {
-            $this->components->warn('  public/storage exists but is a real directory, not a symlink.');
-            $this->line('  Files uploaded to storage/app/public will not be visible through it.');
-            $this->line('  Fix: remove that directory, then run php artisan storage:link');
-
-            $this->problems[] = 'public/storage is a real directory, not a symlink — uploads do not reach it.';
-
-            return;
-        }
-
         $target = realpath($link);
+        $expectedTarget = realpath($expected);
 
-        if ($target === false || $target !== realpath($expected)) {
-            $this->components->warn('  public/storage points at '.($target ?: '(a missing target)'));
+        if ($target === false || $expectedTarget === false || $target !== $expectedTarget) {
+            // A dangling entry (a link whose target is gone) has nothing useful
+            // to say about which side is wrong, so report the state as it is.
+            $kind = is_link($link) ? 'points at' : 'exists but is a real directory, not a link to';
+            $this->components->warn('  public/storage '.$kind.' '.($target ?: '(a missing target)'));
             $this->line('  Expected: '.$expected);
-            $this->line('  Fix: php artisan storage:link (after removing the stale link)');
+            $this->line('  Fix: php artisan storage:link (after removing the stale entry)');
 
-            $this->problems[] = 'public/storage points somewhere other than storage/app/public.';
+            $this->problems[] = is_link($link)
+                ? 'public/storage points somewhere other than storage/app/public.'
+                : 'public/storage is a real directory, not a link to storage/app/public — uploads do not reach it.';
 
             return;
         }
