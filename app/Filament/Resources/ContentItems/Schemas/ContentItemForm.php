@@ -123,7 +123,7 @@ class ContentItemForm
                                     ->directory('content-items/featured')
                                     ->altTextField('featured_image_alt_text')
                                     ->columnSpanFull()
-                                    ->helperText('16:9 ratio recommended for homepage and social sharing'),
+                                    ->helperText('16:9 ratio recommended. Shown on cards and the article page — and used as the social share image when no Open Graph image is set below.'),
 
                                 TextInput::make('featured_image_alt_text')
                                     ->label('Featured Image Alt Text')

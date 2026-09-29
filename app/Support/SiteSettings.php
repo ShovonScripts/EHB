@@ -43,6 +43,12 @@ class SiteSettings
     protected static Media|false|null $cardImage = false;
 
     /**
+     * The resolved site-wide share image. Same tri-state convention as
+     * $cardImage: `false` = not looked up yet, null = looked up, none.
+     */
+    protected static Media|false|null $ogImage = false;
+
+    /**
      * All settings as a key => value map.
      *
      * @return array<string, mixed>
@@ -313,6 +319,7 @@ class SiteSettings
     {
         static::$memo = null;
         static::$cardImage = false;
+        static::$ogImage = false;
 
         Cache::forget(self::CACHE_KEY);
         Cache::forget(self::OG_CACHE_KEY);

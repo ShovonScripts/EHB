@@ -36,14 +36,25 @@
     ];
 
     $outletName = $item->publication?->name ?? 'the original outlet';
+
+    // One resolved image, passed whole — see sections/show for why the URL,
+    // alt text and dimensions travel together.
+    $shareImage = $item->ogImage ?? $item->featuredImage;
 @endphp
 
 <x-app-layout
     :title="$item->seo_title ?: $item->title"
     :description="$item->seo_description ?: \Illuminate\Support\Str::limit($item->summary, 155)"
     :canonical="$item->canonical_url_override ?: url($item->publicPath())"
-    :og-image="$item->ogImage?->url ?: $item->featuredImage?->url"
+    :og-image="$shareImage?->url"
+    :og-image-alt="$shareImage?->alt_text"
+    :og-image-width="$shareImage?->width"
+    :og-image-height="$shareImage?->height"
     og-type="article"
+    :article-published="$item->published_at?->toIso8601String()"
+    :article-modified="$item->updated_at?->toIso8601String()"
+    :article-section="$item->category?->name"
+    :article-tags="$item->tags->pluck('name')->all()"
     :json-ld="$jsonLd"
     :breadcrumbs="$crumbs"
 >

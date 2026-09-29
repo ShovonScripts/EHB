@@ -3,11 +3,17 @@
     'description' => null,
     'canonical' => null,
     'ogImage' => null,
+    'ogImageAlt' => null,
+    'ogImageWidth' => null,
+    'ogImageHeight' => null,
     'ogType' => 'website',
+    'articlePublished' => null,
+    'articleModified' => null,
+    'articleSection' => null,
+    'articleTags' => [],
     'noindex' => false,
     'jsonLd' => null,
     'breadcrumbs' => null,
-    'ogImageAlt' => null,
 ])
 
 @php
@@ -75,9 +81,31 @@
     <meta property="og:url" content="{{ $canonicalUrl }}">
     @if($ogImageUrl)
         <meta property="og:image" content="{{ $ogImageUrl }}">
-        {{-- Describes the share card for anyone reading it with a screen
-             reader. Falls back to the piece's own image alt text. --}}
-        <meta property="og:image:alt" content="{{ \App\Support\SiteSettings::defaultOgImageAlt() ?? $ogImageAlt ?? $metaTitle }}">
+        {{-- Explicit dimensions let crawlers lay out the card before the image
+             finishes downloading; without them the first scrape of a URL can
+             render a collapsed card with no image until the crawler revisits.
+             Emitted only when known (stored on the Media row at upload). --}}
+        @if($ogWidth && $ogHeight)
+            <meta property="og:image:width" content="{{ $ogWidth }}">
+            <meta property="og:image:height" content="{{ $ogHeight }}">
+        @endif
+        <meta property="og:image:alt" content="{{ $ogImageAltText }}">
+    @endif
+    {{-- Article-level tags for crawlers that build topic/date indexes.
+         Only meaningful on article pages; the layout stays silent elsewhere. --}}
+    @if($ogType === 'article')
+        @if($articlePublished)
+            <meta property="article:published_time" content="{{ $articlePublished }}">
+        @endif
+        @if($articleModified)
+            <meta property="article:modified_time" content="{{ $articleModified }}">
+        @endif
+        @if($articleSection)
+            <meta property="article:section" content="{{ $articleSection }}">
+        @endif
+        @foreach((array) $articleTags as $articleTag)
+            <meta property="article:tag" content="{{ $articleTag }}">
+        @endforeach
     @endif
 
     <meta name="twitter:card" content="summary_large_image">
